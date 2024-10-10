@@ -7,10 +7,15 @@ const { simpleParser } = require('mailparser');
 const { parse: parseHtml } = require('node-html-parser');
 require("dotenv").config();
 
-const authUser = process.env.USERNAME;
-const authPass = process.env.PASSWORD;
-const port = process.env.PORT || 3000;
-const directoryPath = process.env.DIRECTORY_PATH || "./maildir";
+const authUser = process.env.USERNAME || "admin";
+const authPass = process.env.PASSWORD || "password";
+const port = process.env.PORT || 3500;
+const directoryPath = process.env.DIRECTORY_PATH || "/emails";
+
+// log initial values
+console.log(
+    `Username: ${authUser}\nPassword: ${authPass}\nPort: ${port}\nDirectory Path: ${directoryPath}`
+)
 
 const app = express();
 app.use(express.json());
