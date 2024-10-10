@@ -4,6 +4,7 @@ const basicAuth = require("basic-auth");
 const path = require("path");
 const { htmlToText } = require('html-to-text');
 const { simpleParser } = require('mailparser');
+const { parse: parseHtml } = require('node-html-parser');
 require("dotenv").config(); // Load .env file
 
 // Load sensitive values from .env file
@@ -60,7 +61,14 @@ function paginate(array, page, limit) {
   return paginatedArray;
 }
 
-// Endpoint to list all the read/unread files with pagination and filter
+// Helper function to convert bytes to human-readable format
+function formatBytes(bytes) {
+  if (bytes === 0) return '0 Bytes';
+  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(1024));
+  return parseFloat((bytes / Math.pow(1024, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
 app.get("/emails", authenticate, (req, res) => {
   try {
     const fileData = filterFiles();
@@ -68,7 +76,8 @@ app.get("/emails", authenticate, (req, res) => {
     // Get the page and limit from query parameters with defaults
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
-    const filter = req.query.filter; // New filter query parameter (read or unread)
+    const filter = req.query.filter; // Existing filter query parameter (read, unread, or all)
+    const modifiedSince = parseInt(req.query.modifiedSince); // New filter query parameter (number of days since modification)
 
     let filesToReturn;
     let totalFilteredFiles;
@@ -81,7 +90,6 @@ app.get("/emails", authenticate, (req, res) => {
       filesToReturn = fileData.unreadFiles;
       totalFilteredFiles = fileData.totalUnreadFiles;
     } else if (filter === "all") {
-      // Return all files (both read and unread)
       filesToReturn = [...fileData.readFiles, ...fileData.unreadFiles];
       totalFilteredFiles = fileData.totalFiles;
     } else {
@@ -90,21 +98,44 @@ app.get("/emails", authenticate, (req, res) => {
       totalFilteredFiles = fileData.totalFiles;
     }
 
+    // Additional filter: Filter by last modified date (if modifiedSince is provided)
+    if (modifiedSince) {
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - modifiedSince);
+
+      // Filter the files based on their last modification date
+      filesToReturn = filesToReturn.filter(file => new Date(file.filemodified_at) >= cutoffDate);
+      totalFilteredFiles = filesToReturn.length;
+    }
+
+    // Sort files by modification date in descending order (newest first)
+    filesToReturn.sort((a, b) => new Date(b.filemodified_at) - new Date(a.filemodified_at));
+
+    // Calculate the total size of the filtered files
+    const totalSizeInBytes = filesToReturn.reduce((accum, file) => {
+      const fileSize = fs.statSync(path.join(directoryPath, file.filename)).size;
+      return accum + fileSize;
+    }, 0);
+
+    // Convert the total size into a human-readable format
+    const totalSize = formatBytes(totalSizeInBytes);
+
     // Paginate the results
     const paginatedFiles = paginate(filesToReturn, page, limit);
     const totalPages = Math.ceil(totalFilteredFiles / limit);
 
     // Construct the next and previous page URLs
-    const nextPage = page < totalPages ? `/emails?page=${page + 1}&limit=${limit}&filter=${filter}` : null;
-    const prevPage = page > 1 ? `/emails?page=${page - 1}&limit=${limit}&filter=${filter}` : null;
+    const nextPage = page < totalPages ? `/emails?page=${page + 1}&limit=${limit}&filter=${filter}&modifiedSince=${modifiedSince}` : null;
+    const prevPage = page > 1 ? `/emails?page=${page - 1}&limit=${limit}&filter=${filter}&modifiedSince=${modifiedSince}` : null;
 
     // Return the paginated response with prevPage and nextPage
     res.json({
       currentPage: page,
       totalPages,
       limit,
-      totalFiles: totalFilteredFiles, // Total number of filtered files (read, unread, or both)
-      files: paginatedFiles,
+      totalFiles: totalFilteredFiles, // Total number of filtered files (read, unread, or both, potentially filtered by modified date)
+      totalSize, // Total size of the filtered files in human-readable format
+      files: paginatedFiles, // Sorted by modification date (newest first)
       nextPage, // URL for the next page (null if on the last page)
       prevPage, // URL for the previous page (null if on the first page)
     });
@@ -183,58 +214,80 @@ app.post('/emails/parse', authenticate, async (req, res) => {
     const originalTo = parsedEmail.headers.get('x-original-to') || 'Unknown original recipient';
     const originalRecipient = deliveredTo !== 'Unknown original recipient' ? deliveredTo : originalTo;
 
-    // Extract and clean up the email body (plain text or HTML)
-    let body = parsedEmail.text || parsedEmail.html || 'No body content found';
+    // Extract plain text and HTML body separately
+    const plainTextBody = parsedEmail.text || 'No plain text body content found';
+    let htmlBody = parsedEmail.html || '';
 
-    // Normalize the body (remove excess newlines)
-    body = body.replace(/\n+/g, ' ').trim();
+    // Clean and normalize the plain text content
+    let cleanedTextBody = plainTextBody.replace(/\n+/g, ' ').trim();
 
-    // Array to store base64-encoded images found in the email body
+    // Arrays to store base64-encoded images and extracted links
     const base64Images = [];
-
-    // Array to store extracted links
     const extractedLinks = [];
 
-    // Regex to find and remove plain text URLs (http, https, ftp, etc.)
-    const plainTextLinkPattern = /(https?:\/\/[^\s]+)/g;
+    // Convert HTML content to plain text without styles, scripts, or unnecessary HTML elements
+    let plainTextFromHtml = '';
 
-    // Regex to find and remove HTML links (<a href="...">...</a>)
-    const linkPattern = /<a [^>]*href="([^"]+)"[^>]*>(.*?)<\/a>/gi;
+    if (htmlBody) {
+      try {
+        // Replace <br> with \n before parsing the HTML to preserve line breaks
+        htmlBody = htmlBody.replace(/<br\s*\/?>/gi, '\n');
 
-    // If the email contains HTML, search for base64-encoded images and links in the body
-    if (parsedEmail.html) {
-      // Regex to find base64-encoded images in the HTML (data:image/<type>;base64,...)
-      const base64ImagePattern = /data:image\/[a-zA-Z]+;base64,[^"]+/g;
+        // Parse HTML and remove styles, scripts, and other unnecessary elements
+        const root = parseHtml(htmlBody);
 
-      // Find all matches (base64 images) in the HTML
-      const base64Matches = parsedEmail.html.match(base64ImagePattern);
+        // Remove <script> and <style> tags
+        root.querySelectorAll('script, style').forEach(tag => {
+          tag.remove();
+        });
 
-      if (base64Matches) {
-        base64Matches.forEach((match, index) => {
-          base64Images.push({
-            image: match, // The full base64 string
-            index: index  // Track the order if needed
+        // Extract all links and add them to `extractedLinks` array
+        root.querySelectorAll('a').forEach((link, index) => {
+          const href = link.getAttribute('href');
+          const text = link.innerText.trim();
+          if (href) {
+            extractedLinks.push({
+              href: href,
+              text: text || `Link ${index + 1}`,
+            });
+
+            // Replace the link with just the text part
+            link.replaceWith(text);
+          }
+        });
+
+        // Find all base64-encoded images
+        const base64ImagePattern = /data:image\/[a-zA-Z]+;base64,[^"]+/g;
+        const base64Matches = htmlBody.match(base64ImagePattern);
+
+        if (base64Matches) {
+          base64Matches.forEach((match, index) => {
+            base64Images.push({
+              image: match, // The full base64 string
+              index: index,  // Track the order if needed
+            });
+
+            // Remove base64 image from the HTML body
+            htmlBody = htmlBody.replace(match, `[Inline image ${index + 1} removed]`);
           });
+        }
 
-          // Remove base64 image from the HTML body
-          body = body.replace(match, `[Inline image ${index + 1} removed]`);
-        });
+        // Convert the cleaned HTML body into plain text
+        plainTextFromHtml = root.innerText
+          .replace(/\n+/g, ' ')      // Normalize multiple newlines to a single space
+          .replace(/&nbsp;/g, ' ')   // Replace non-breaking spaces (&nbsp;) with a regular space
+          .replace(/&[a-z]+;/gi, ' ') // Replace other HTML entities (like &amp;) with a regular space
+          .trim();
+      } catch (htmlError) {
+        console.error('Error parsing HTML content:', htmlError);
+        // If there's an error parsing the HTML, just keep the original cleaned up a bit
+        plainTextFromHtml = htmlBody.replace(/\n+/g, ' ').trim();
       }
-
-      // Extract and remove HTML links from the body using regex
-      body = body.replace(linkPattern, (match, href, text) => {
-        extractedLinks.push({
-          href: href,  // The URL (href attribute)
-          text: text   // The anchor text between <a>...</a>
-        });
-
-        // Replace the link with an empty string to remove it from the body
-        return '';
-      });
     }
 
-    // Handle and remove plain text URLs from the body
-    body = body.replace(plainTextLinkPattern, (match) => {
+    // Handle and remove plain text URLs from the cleaned plain text body
+    const plainTextLinkPattern = /(https?:\/\/[^\s]+)/g;
+    cleanedTextBody = cleanedTextBody.replace(plainTextLinkPattern, (match) => {
       extractedLinks.push({
         href: match,  // The plain text URL
         text: match   // The same URL (no anchor text in this case)
@@ -252,10 +305,11 @@ app.post('/emails/parse', authenticate, async (req, res) => {
       to,
       cc,
       date,
-      body: body.trim(),   // Cleaned body content with base64 images and links removed
-      originalRecipient,   // Extracted original recipient
-      base64Images,        // Array of extracted base64 images
-      extractedLinks       // Array of extracted links (URLs and text)
+      originalRecipient,  // Extracted original recipient
+      plainTextBody: cleanedTextBody.trim(),   // Cleaned plain text body content
+      htmlBody: plainTextFromHtml.trim(),      // HTML body converted to plain text without styles/scripts/entities
+      base64Images,                            // Array of extracted base64 images
+      extractedLinks                           // Array of extracted links (URLs and text)
     });
   } catch (error) {
     // Catch all other errors and log them for debugging
