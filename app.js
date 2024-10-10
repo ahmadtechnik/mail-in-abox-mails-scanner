@@ -10,7 +10,6 @@ const port = process.env.PORT || 3000;
 
 app.use(express.json());
 
-// Set up routes
 app.get("/emails", authenticate, getEmails);
 app.post("/emails/content", authenticate, getEmailContent);
 app.post("/emails/parse", authenticate, parseEmail);
