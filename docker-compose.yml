@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    ports:
+      - "${PORT}:${PORT}"
+    volumes:
+      - /home/user-data/mail/mailboxes:/mails
+      - .env:/app/.env
+    env_file:
+      - .env
+    user: mail
+    restart: unless-stopped

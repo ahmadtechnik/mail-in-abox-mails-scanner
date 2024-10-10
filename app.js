@@ -5,13 +5,15 @@ const path = require("path");
 const { htmlToText } = require('html-to-text');
 const { simpleParser } = require('mailparser');
 const { parse: parseHtml } = require('node-html-parser');
-require("dotenv").config(); // Load .env file
+require("dotenv").config();
 
-// Load sensitive values from .env file
 const authUser = process.env.USERNAME;
 const authPass = process.env.PASSWORD;
 const port = process.env.PORT || 3000;
 const directoryPath = process.env.DIRECTORY_PATH || "./maildir";
+
+const app = express();
+app.use(express.json());
 
 // Function to check basic authentication
 function authenticate(req, res, next) {
@@ -23,27 +25,23 @@ function authenticate(req, res, next) {
   return res.status(401).send("Authentication required.");
 }
 
-const app = express();
-app.use(express.json());
-
-
 // Function to read the directory and filter files
 function filterFiles() {
   const files = fs.readdirSync(directoryPath);
 
   const readFiles = files
-    .filter((file) => file.includes(":2,S"))
-    .map((file) => ({
-      filename: file,
-      filemodified_at: fs.statSync(path.join(directoryPath, file)).mtime, // Get the last modified date of the file
-    }));
+      .filter((file) => file.includes(":2,S"))
+      .map((file) => ({
+        filename: file,
+        filemodified_at: fs.statSync(path.join(directoryPath, file)).mtime, // Get the last modified date of the file
+      }));
 
   const unreadFiles = files
-    .filter((file) => !file.includes(":2,S"))
-    .map((file) => ({
-      filename: file,
-      filemodified_at: fs.statSync(path.join(directoryPath, file)).mtime, // Get the last modified date of the file
-    }));
+      .filter((file) => !file.includes(":2,S"))
+      .map((file) => ({
+        filename: file,
+        filemodified_at: fs.statSync(path.join(directoryPath, file)).mtime, // Get the last modified date of the file
+      }));
 
   return {
     readFiles,
@@ -53,6 +51,7 @@ function filterFiles() {
     totalFiles: files.length,
   };
 }
+
 
 // Paginate the emails
 function paginate(array, page, limit) {
