@@ -16,5 +16,5 @@ RUN npm install -g pm2 nodemon
 # Copy the rest of the application code to the working directory
 COPY . .
 
-# Start the application using pm2
-CMD ["pm2", "start", "ecosystem.config.js"]
+# Start the application using nodemon
+CMD ["nodemon", "app.js"]
