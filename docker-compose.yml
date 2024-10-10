@@ -9,6 +9,7 @@ services:
       - /home/user-data/mail/mailboxes:/home/mail:ro
       - .env:/app/.env
       - ./app.js:/app/app.js
+      - node_modules_cache:/app/node_modules
     env_file:
       - .env
     user: mail
