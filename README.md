@@ -17,16 +17,18 @@ The app can fetch email files, parse them, and extract relevant data like header
 *   **USERNAME**: The username for basic authentication.
 *   **PASSWORD**: The password for basic authentication.
 *   **PORT**: The port on which the application listens for requests.
-*   **DIRECTORY\_PATH**: The path to the specific mailbox folder within the Mail-in-a-Box mailboxes directory (e.g., `/home/user-data/mail/mailboxes/domain.ltd/user/cur`).
+*   **DIRECTORY_PATH**: The base path to the mailboxes directory.
 
 ## API Endpoints
 
-### 1\. GET `/emails`
+### 1\. POST `/emails`
 
 Fetch a list of read, unread, or all email files with pagination.
 
-#### Query Parameters:
+#### Body Parameters:
 
+*   **domain** (required): The domain name of the mailbox.
+*   **username** (required): The username of the mailbox.
 *   **page** (optional): The page number for pagination (default: 1).
 *   **limit** (optional): The number of emails per page (default: 10).
 *   **filter** (optional): Filter by 'read', 'unread', or 'all' (default: all).
@@ -35,7 +37,8 @@ Fetch a list of read, unread, or all email files with pagination.
 #### Example Request:
 
 ```
-curl -u USERNAME:PASSWORD "http://localhost:3000/emails?page=1&limit=10&filter=read"
+curl -u USERNAME:PASSWORD -X POST -H "Content-Type: application/json" \
+-d '{"domain": "example.com", "username": "user", "page": 1, "limit": 10, "filter": "read"}' "http://localhost:3000/emails"
 ```
 
 ### 2\. POST `/emails/content`
@@ -45,12 +48,14 @@ Retrieve the raw content of a specified email file.
 #### Body Parameters:
 
 *   **file** (required): The name of the email file to retrieve the content.
+*   **domain** (required): The domain name of the mailbox.
+*   **username** (required): The username of the mailbox.
 
 #### Example Request:
 
 ```
 curl -u USERNAME:PASSWORD -X POST -H "Content-Type: application/json" \
--d '{"file": "123456.eml"}' "http://localhost:3000/emails/content"
+-d '{"domain": "example.com", "username": "user", "file": "123456.eml"}' "http://localhost:3000/emails/content"
 ```
 
 ### 3\. POST `/emails/parse`
@@ -60,6 +65,8 @@ Parse and extract relevant data from the specified email file.
 #### Body Parameters:
 
 *   **file** (required): The name of the email file to parse.
+*   **domain** (required): The domain name of the mailbox.
+*   **username** (required): The username of the mailbox.
 
 #### Example Response:
 
@@ -75,7 +82,7 @@ Parse and extract relevant data from the specified email file.
 
 ```
 curl -u USERNAME:PASSWORD -X POST -H "Content-Type: application/json" \
--d '{"file": "123456.eml"}' "http://localhost:3000/emails/parse"
+-d '{"domain": "example.com", "username": "user", "file": "123456.eml"}' "http://localhost:3000/emails/parse"
 ```
 
 ### 4\. POST `/emails/body`
@@ -85,12 +92,14 @@ Extract and clean the email body, removing base64-encoded images and links.
 #### Body Parameters:
 
 *   **file** (required): The name of the email file to extract the body from.
+*   **domain** (required): The domain name of the mailbox.
+*   **username** (required): The username of the mailbox.
 
 #### Example Request:
 
 ```
 curl -u USERNAME:PASSWORD -X POST -H "Content-Type: application/json" \
--d '{"file": "123456.eml"}' "http://localhost:3000/emails/body"
+-d '{"domain": "example.com", "username": "user", "file": "123456.eml"}' "http://localhost:3000/emails/body"
 ```
 
 ## Running the Application
