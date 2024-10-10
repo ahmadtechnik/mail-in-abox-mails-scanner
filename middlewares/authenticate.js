@@ -2,8 +2,8 @@ const basicAuth = require("basic-auth");
 
 // Basic authentication middleware
 function authenticate(req, res, next) {
-    const authUser = process.env.USERNAME || "admin";
-    const authPass = process.env.PASSWORD || "password";
+    const authUser = process.env.USERNAME || "admin"; // must be defined in .env
+    const authPass = process.env.PASSWORD || "password"; // must be defined in .env
 
     console.log("Authenticating user...");
     const user = basicAuth(req);
