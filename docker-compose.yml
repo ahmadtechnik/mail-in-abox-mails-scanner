@@ -6,7 +6,7 @@ services:
     ports:
       - "${PORT}:${PORT}"
     volumes:
-      - /home/user-data/mail/mailboxes:~/mails:ro
+      - /home/user-data/mail/mailboxes:/home/mail:ro
       - .env:/app/.env
       - ./app.js:/app/app.js
     env_file:
