@@ -14,3 +14,7 @@ services:
       - .env
     user: mail
     restart: unless-stopped
+
+volumes:
+  node_modules_cache:
+    driver: local
