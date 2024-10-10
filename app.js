@@ -1,3 +1,27 @@
+/**
+ * Mail-in-a-Box Mail Fetcher & Parser
+ *
+ * This script is designed to retrieve specific user mail files from within a Mail-in-a-Box server.
+ * It mounts the `mailboxes` directory of the Mail-in-a-Box server with read-only permissions,
+ * ensuring that no changes within the container affect the actual mail data on the server.
+ *
+ * The application operates in a containerized environment where the mailboxes are mounted as read-only,
+ * safeguarding the integrity of the emails during the operation.
+ *
+ * In addition to fetching mail files, this script also handles the parsing of email content.
+ * It extracts important data from the parsed email files such as headers, sender/recipient information,
+ * subject, body, and attachments, allowing for further processing or analysis of email data.
+ *
+ * Environment Variables:
+ * - USERNAME: The username used to authenticate and access the mailbox.
+ * - PASSWORD: The password used to authenticate and access the mailbox.
+ * - PORT: The port on which the application listens for requests.
+ * - DIRECTORY_PATH: The path to the specific mailbox folder within the Mail-in-a-Box mailboxes directory.
+ *
+ * Note: The application uses read-only permissions for the mounted mailboxes to ensure that
+ * no accidental writes or deletions affect the actual emails stored on the server.
+ */
+
 const express = require("express");
 const fs = require("fs");
 const basicAuth = require("basic-auth");
@@ -7,15 +31,19 @@ const { simpleParser } = require('mailparser');
 const { parse: parseHtml } = require('node-html-parser');
 require("dotenv").config();
 
+// basic auth credentials username and password
 const authUser = process.env.USERNAME || "admin";
 const authPass = process.env.PASSWORD || "password";
-const port = process.env.PORT || 3500;
+
+// port on which the server will run
+const port = process.env.PORT || 3000;
+
+// this is directory path where emails "cur" folder is located
+// for example /home/user-data/mail/mailboxes/domain.ltd/user/cur
 const directoryPath = path.resolve(process.env.DIRECTORY_PATH || "/emails");
 
 // log initial values
-console.log(
-    `Username: ${authUser}\nPassword: ${authPass}\nPort: ${port}\nDirectory Path: ${directoryPath}`
-)
+console.log(`Username: ${authUser}\nPassword: ${authPass}\nPort: ${port}\nDirectory Path: ${directoryPath}`)
 
 const app = express();
 app.use(express.json());
